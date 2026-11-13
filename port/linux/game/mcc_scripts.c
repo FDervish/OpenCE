@@ -536,8 +536,52 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
             ++missing;
         }
     }
+    /* Every skull has storage, whether or not the map's scripts name it, so
+     * the console can turn on any of them (mcc_script_find_global). */
+    for (i = 0; i < (long)NUMBEROF(mcc_local_globals); i++) {
+        short skull = mcc_skull_find(mcc_local_globals[i].name);
+        if (skull == NONE || mcc_local_globals[i].external || locals[i] != NONE) continue;
+        locals[i] = mcc_local_global(runtime, scenario, syntax,
+            mcc_local_globals[i].internal ? mcc_local_globals[i].internal : mcc_local_globals[i].name,
+            mcc_local_globals[i].type);
+        if (locals[i] == NONE) error(_error_silent, "mcc: no scenario storage for %s", mcc_local_globals[i].name);
+        else mcc_skulls_bind(skull, locals[i]);
+    }
     /* Retain the MCC arena, including free slots for console expressions.
      * Its separate validator owns the larger traversal workspace. */
     syntax->data = nodes;
     return missing == 0 && mcc_parameters_prepare(runtime, scenario, syntax);
+}
+
+/* The console's names for MCC's map-local globals: MCC's own, for those
+ * kept under an internal name (an external one's, for Bandanna). NONE when
+ * the map has no storage for it, as for f0-f5 when its scripts do not use
+ * them (the console then reaches the native ones). */
+short mcc_script_find_global(char const *name)
+{
+    short local;
+    if (!mcc_cache_tags_loaded() || !name || (local = mcc_local_global_find(name)) == NONE ||
+        !mcc_local_globals[local].internal) return NONE;
+    return hs_find_global_by_name(mcc_local_globals[local].internal);
+}
+
+/* The console's completions: MCC's functions, or its names for the globals
+ * this map has (the scenario's own names are listed already). */
+void mcc_script_enumerate(boolean functions, void (*add)(char const *name))
+{
+    short index;
+    struct hs_function_definition *function;
+    if (!mcc_cache_tags_loaded()) return;
+    if (functions) {
+        for (index = MCC_HS_DISTANCE_TO_OBJECT; index <= MCC_HS_AI_DESELECT; index++)
+            if ((function = mcc_script_function(index)) != NULL) add(function->name);
+        for (index = MCC_HS_CAMPAIGN_FIRST; (function = mcc_script_function(index)) != NULL; index++)
+            add(function->name);
+        for (index = MCC_HS_LIBRARY_FIRST; (function = mcc_script_function(index)) != NULL; index++)
+            add(function->name);
+        return;
+    }
+    for (index = 0; index < (short)NUMBEROF(mcc_local_globals); index++)
+        if (mcc_local_globals[index].internal && mcc_script_find_global(mcc_local_globals[index].name) != NONE)
+            add(mcc_local_globals[index].name);
 }

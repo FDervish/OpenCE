@@ -2261,8 +2261,14 @@ Scripts may read and set it; nothing else reads it.
 
 A scenario global's name has at most 31 characters. Longer MCC names use an
 internal name appended to the script strings, which the native recompiler
-resolves (`__mcc_skull_catch`, for example). The console reaches these
-globals only by their internal names.
+resolves (`__mcc_skull_catch`, for example).
+
+Every skull has storage on an MCC map whose scenario has scripts, whether or
+not they name it. The console knows the globals by MCC's names too
+(`hs_find_global_by_name`), and completes them and MCC's functions. So
+`debug_ice_cream_flavor_status_iron 1` (or `set ... true`) turns a skull on to
+test it, and the bare name prints whether it is on. Bandanna's name reaches
+`cheat_infinite_ammo`. On the network, only the host's console changes them.
 
 [`mcc_script_library.c`](../port/linux/game/mcc_script_library.c) holds the
 functions:
