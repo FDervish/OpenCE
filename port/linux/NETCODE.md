@@ -460,8 +460,9 @@ omitted base resources with its own validated local files. Message layouts
 are unchanged; the changed sharing agreement requires matching peers.
 
 In version 45, the MCC skulls that every machine draws or predicts
-(`port/linux/game/mcc_skulls.h`: Fog, Blind, Eye Patch, Recession and Boom)
-are bits 12-16 of an MCC map's campaign state flags, which the host sends every
+(`port/linux/game/mcc_skulls.h`: Fog, Blind, Eye Patch, Recession, Boom,
+I Would Have Been Your Daddy, Sputnik, Feather, Foreign and Malfunction) are
+bits 12-21 of an MCC map's campaign state flags, which the host sends every
 third tick. A version-44 client would refuse a state with those bits. Only
 the host runs a map's scripts, so it alone applies the other skulls. The
 message layouts are unchanged.

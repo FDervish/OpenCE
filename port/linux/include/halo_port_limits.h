@@ -77,7 +77,8 @@ riding choice has its own message: port/linux/NETCODE.md).
 Version 44: MCC package offers are automatic under Map Sharing, and a joiner
 may satisfy omitted base resources with its own validated local files.
 Version 45: an MCC map's campaign state carries the skulls every machine
-draws or predicts (Fog, Blind, Eye Patch, Recession and Boom: mcc_skulls.h). */
+draws or predicts (Fog, Blind, Eye Patch, Recession, Boom, I Would Have Been
+Your Daddy, Sputnik, Feather, Foreign and Malfunction: mcc_skulls.h). */
 #define HALO_PORT_NETWORK_VERSION 45
 /* ... the advertisement's reserved bytes: the version (a little-endian word),
 then flags, then the game's kind (an OpenCE gametype's mode, and Hardcore:

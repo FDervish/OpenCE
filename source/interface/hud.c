@@ -1482,8 +1482,10 @@ void hud_draw_screen(
 		/* port: related MCC HUD elements share this player's unit safe frame. */
 		mcc_hud_view_begin(player->unit_index);
 
+		/* port: nor with an MCC map's Blind skull on, as MCC's Halo 1
+		(port/linux/game/mcc_skulls.c) */
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
-			!cinematic_in_progress())
+			!cinematic_in_progress() && !mcc_skull_active(_mcc_skull_blind))
 		{
 			hud_draw_players();
 		}
@@ -1505,8 +1507,10 @@ void hud_draw_screen(
 			hud_draw_match_timer();
 		}
 
+		/* port: Blind (above) stops the motion sensor too */
 		if (!game_time_get_paused() &&
-			render.local_player_index == local_player_get_next(NONE))
+			render.local_player_index == local_player_get_next(NONE) &&
+			!mcc_skull_active(_mcc_skull_blind))
 		{
 			motion_sensor_tick();
 		}

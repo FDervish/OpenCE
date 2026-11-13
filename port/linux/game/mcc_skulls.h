@@ -13,6 +13,11 @@ enum mcc_skull
     _mcc_skull_eye_patch,
     _mcc_skull_recession,
     _mcc_skull_boom,
+    _mcc_skull_iwhbyd,
+    _mcc_skull_sputnik,
+    _mcc_skull_feather,
+    _mcc_skull_foreign,
+    _mcc_skull_malfunction,
     NUMBER_OF_MCC_REPLICATED_SKULLS,
 
     /* the host's alone */
@@ -26,16 +31,11 @@ enum mcc_skull
     _mcc_skull_thunderstorm,
     _mcc_skull_thats_just_wrong,
     _mcc_skull_ghost,
-    _mcc_skull_sputnik,
-    _mcc_skull_foreign,
-    _mcc_skull_malfunction,
     _mcc_skull_pinata,
     _mcc_skull_grunt_funeral,
     _mcc_skull_grunt_birthday_party,
-    _mcc_skull_iwhbyd,
     _mcc_skull_streaking,
     _mcc_skull_styx,
-    _mcc_skull_feather,
     _mcc_skull_bonded_pair,
     _mcc_skull_masterblaster,
     _mcc_skull_force_coop,
@@ -66,8 +66,14 @@ short mcc_skulls_ammunition_scale(boolean player_weapon);
 /* Famine: the weapons a unit no player controlled drops when it dies keep
  * half their ammunition. */
 void mcc_skulls_famine(long unit_index);
-/* Mythic: an enemy biped's maximum body vitality is multiplied by this. */
-real mcc_skulls_body_vitality_scale(long object_index);
+/* Mythic and Styx: a biped's maximum vitality as it is created. */
+void mcc_skulls_vitality(long object_index, real *maximum_body_vitality, real *maximum_shield_vitality);
+/* Pinata: a player's melee knocks a plasma grenade out of a living enemy biped. */
+void mcc_skulls_pinata(long player_index, short attacker_team, long victim_index, boolean melee);
+/* I Would Have Been Your Daddy: a rare permutation's skip fraction becomes common. */
+real mcc_skulls_skip_fraction(real skip_fraction);
+/* Sputnik and Feather: a damage impulse is multiplied by this. */
+real mcc_skulls_impulse_scale(long owner_object_index);
 /* Boom: an explosion's radii are multiplied by this. */
 real mcc_skulls_explosion_radius_scale(void);
 /* Black Eye: a player's unit has no shield recharge of its own; its melee
@@ -77,7 +83,29 @@ void mcc_skulls_melee_struck(long player_index, long victim_object_index, boolea
 /* Iron: a solo player's death restarts the level; a co-op player's reverts
  * every player to the last checkpoint. */
 boolean mcc_skulls_iron(void);
-/* Each tick of the host's (or a local game's) simulation: Assassins. */
+/* Iron with one player in the game: the loss restarts the level. */
+boolean mcc_skulls_iron_restarts(void);
+/* Anger: an enemy actor's primary rate of fire is multiplied by this. */
+real mcc_skulls_rate_of_fire_scale(short team_index);
+/* Catch: actors keep and throw grenades more (actions.c, actor_combat.c, actors.c). */
+boolean mcc_skulls_catch(void);
+/* Foreign: a player's unit uses no needler, plasma pistol or plasma rifle,
+ * and picks up no plasma grenade. */
+boolean mcc_skulls_foreign_refuses_weapon(long unit_index, long weapon_index);
+boolean mcc_skulls_foreign_refuses_grenade(long unit_index, long equipment_index);
+/* Grunt Funeral: a Grunt is destroyed when it dies, in a plasma grenade's
+ * explosion, and drops nothing. */
+boolean mcc_skulls_funeral_grunt(long object_index);
+void mcc_skulls_funeral_explosion(long object_index);
+/* Malfunction: whether the HUD element (0 shield meter, 1 health meter,
+ * 2 weapon HUD, 3 grenades, 4 crosshairs, 5 motion sensor) is off; a local
+ * player's death chooses another. */
+boolean mcc_skulls_malfunction(short element);
+void mcc_skulls_malfunction_died(void);
+/* That's Just Wrong: an actor hears every unit as loud (outside cinematics). */
+short mcc_skulls_unit_sound_volume(short constant_sound);
+/* Each tick of the host's (or a local game's) simulation: Assassins, and
+ * Bandanna's grenades. */
 void mcc_skulls_update(void);
 
 /* Implemented beside the interpreter's private global data (mcc_script_runtime.inl). */

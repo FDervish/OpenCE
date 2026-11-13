@@ -2235,12 +2235,12 @@ static void main_lost_map_private(
 		/* port: the co-op host chooses whether a team wipe rewinds or only
 		respawns. Scripted failures still revert, or their cutscene would
 		never end. A missing save falls back to checkpoint positions. */
-		/* port: with an MCC map's Iron skull, a solo player's death
-		restarts the level, and a co-op team's always rewinds
+		/* port: with an MCC map's Iron skull, a loss with one player in the
+		game restarts the level, and a co-op team's always rewinds
 		(port/linux/game/mcc_skulls.c) */
 		if (game_connection() != _game_connection_network_server)
 		{
-			if (mcc_skulls_iron() && players_are_all_dead() && !game_is_cooperative())
+			if (mcc_skulls_iron_restarts())
 				main_reset_map();
 			else
 				game_state_revert();

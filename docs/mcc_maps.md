@@ -974,7 +974,7 @@ gravity periodically, including after changes and late joins.
 
 The `debug_ice_cream_flavor_status_*` skull globals are map-local
 booleans that scripts may read and set (see
-[MCC editing kit script names](#mcc-editing-kit-script-names)); eleven of
+[MCC editing kit script names](#mcc-editing-kit-script-names)); most of
 them change play (see [MCC skulls](#mcc-skulls)).
 MCC maps may
 set `sound_gain_under_dialog` and `cheat_infinite_ammo`; the adapter captures
@@ -2249,7 +2249,7 @@ Scripts may read and set it; nothing else reads it.
 - **Skulls.** The 29 `debug_ice_cream_flavor_*` globals record which skulls a
   script turned on. Bandanna reads and sets the existing `cheat_infinite_ammo`.
   That control gives infinite reserve ammunition and grenades, and still
-  requires reloading. Ten others change play ([MCC skulls](#mcc-skulls)).
+  requires reloading. Most others change play ([MCC skulls](#mcc-skulls)).
   The earlier rule, which accepted only a literal `false` and refused maps
   that enabled a skull, is withdrawn.
 - **Debug and settings switches** (`rasterizer_fps`, `hs_verbose`,
@@ -2301,8 +2301,7 @@ The Steam Workshop items examined used only a few of these names. All nine
 maps of the Halo 1 Firefight package (Workshop 2898809930) read and set
 skulls, Bandanna among them. That package also calls
 `cheat_active_camouflage`. Its maps were refused, and now load. Of the skulls
-their scripts turn on, Bandanna, Black Eye, Famine, Fog, Iron, Mythic and
-Assassins have their effects ([MCC skulls](#mcc-skulls)). Lumoria (Workshop
+their scripts turn on, all have their effects ([MCC skulls](#mcc-skulls)). Lumoria (Workshop
 3323672581) calls `map_name episode_2a` on Impossible. The native version of
 that function disabled the script that calls it; the script now runs, and the
 missing map returns to the menu.
@@ -2326,46 +2325,59 @@ a client were not exercised.
 
 ## MCC skulls
 
-Since network version 45, ten skulls change play when an MCC map's scripts
-turn them on, besides Bandanna. `mcc_skulls.c` records which scenario global
-holds each skull while the scripts are prepared, and the host reads the
-globals. Every machine draws or predicts Fog, Blind, Eye Patch, Recession
-and Boom, so the host sends them in bits 12-16 of the campaign state's flags
-([NETCODE.md](../port/linux/NETCODE.md)). The host alone applies the rest. A
-skull is off outside MCC maps, so the Xbox and Custom Edition paths are
-unchanged.
+Twenty-three skulls change play when an MCC map's scripts turn them on, as
+they do in MCC's Halo 1, besides Bandanna. `mcc_skulls.c` records which
+scenario global holds each skull while the scripts are prepared, and the host
+reads the globals. Every machine draws or predicts ten of them, so the host
+sends them in bits 12-21 of the campaign state's flags
+([NETCODE.md](../port/linux/NETCODE.md)): Fog, Blind, Eye Patch, Recession,
+Boom, I Would Have Been Your Daddy, Sputnik, Feather, Foreign and Malfunction.
+The host alone applies the rest. A skull is off outside MCC maps, so the Xbox
+and Custom Edition paths are unchanged.
 
-| Skull | Effect | Where |
+Each rule was read from MCC's own `halo1.dll`. MCC reads every skull through
+one function of the skull's index, so each of its checks could be found and
+matched to the engine function here that does the same work. Halopedia's
+descriptions ([Anniversary](https://www.halopedia.org/Halo:_Combat_Evolved_Anniversary_skulls),
+[MCC](https://www.halopedia.org/Halo:_The_Master_Chief_Collection_skulls))
+agree with the rules but give few of their values.
+
+| Skull | Effect, as MCC's Halo 1 | Where |
 | --- | --- | --- |
+| Iron | Any player's death loses the map: with one player in the game the level restarts, otherwise every player rewinds to the last checkpoint. A pseudo kill is not a death here. A network co-op loss always rewinds, whatever the host's wipe choice. | `player_died` (`players.c`), `main_lost_map_private` (`main.c`) |
 | Fog | No motion tracker. | `game_engine_hud_draw_motion_sensor` (`game_engine.c`) |
-| Blind | No HUD, and no first-person weapon or its effects. The HUD's sounds still play. | `hud_draw_screen` (`hud.c`), `first_person_weapons.c` |
+| Mythic | As a biped is created: a Covenant or Flood biped's body vitality doubles, and a Sentinel's shields rise to its body vitality. | `object_initialize_vitality` (`damage.c`) |
+| Famine | The weapons a unit no player controlled drops when it dies keep half their rounds, by integer division; a battery weapon's use moves halfway to empty. | `unit_died` (`units.c`) |
+| Grunt Funeral | A Grunt (`characters\grunt\grunt` or `grunt specops`) is destroyed when it dies, in the explosion of the globals' plasma grenade projectile, and drops nothing. | `object_destroy` (`damage.c`), `units.c` |
+| Foreign | A player's unit cannot pick up, swap to or cycle to a needler, plasma pistol or plasma rifle (weapon types 2-4), nor pick up plasma grenades. | `unit_can_use_weapon`, `unit_add_grenade_to_inventory` (`units.c`) |
 | Eye Patch | No aim assist: no autoaim and no magnetism, as Hardcore. | `aim_assist` (`aim_assist.c`) |
-| Recession | A player's weapon spends twice its rounds per shot, and its battery twice as fast. | `weapon_trigger_fire` and the battery age (`weapons.c`) |
-| Boom | An explosion's cutoff and falloff radii double. | Area damage (`damage.c`) and the host's checks of clients' hit reports (`network_damage.c`) |
-| Iron | A solo player's death restarts the level. One co-op player's death rewinds every player to the last checkpoint. A co-op team wipe always rewinds, whatever the host's wipe choice. | `main_lost_map_private` (`main.c`), the respawn decision (`players.c`) |
-| Famine | The weapons a unit no player controlled drops when it dies keep half their rounds, by integer division. A battery weapon's use moves halfway to empty. | `unit_died` (`units.c`), after the actor chooses the ammunition |
-| Mythic | An enemy biped's maximum body vitality doubles. | `object_get_maximum_body_vitality` (`damage.c`) |
+| Recession | A player's weapon spends twice its rounds per shot, needs twice its rounds to fire, and drains its battery twice as fast. | `weapon_trigger_fire` (`weapons.c`) |
+| Malfunction | One HUD element is off: the shield meter, health meter, weapon HUD, grenades, crosshairs or motion sensor (not the sensor with Fog). This machine's own random numbers choose it when the skull turns on and when a local player dies. | `hud_unit.c`, `hud_weapon.c` |
 | Black Eye | A player's shields do not recharge on their own. A player's melee that damages an enemy unit fills them, and leaves an overshield as it is. | Shield recharge and `object_cause_damage` (`damage.c`) |
+| Piñata | A player's melee knocks one plasma grenade out of a living enemy biped, even one that carries none, before the blow lands. | `object_cause_damage` (`damage.c`), `unit_port_drop_one_grenade` (`units.c`) |
+| Boom | An explosion's cutoff and falloff radii double. | Area damage (`damage.c`), the host's checks of clients' hit reports (`network_damage.c`) |
+| I Would Have Been Your Daddy | A sound permutation skipped half the time or more is skipped one minus as often: rare lines become common. | `sound_definition_next_permutation` (`sound_definitions.c`) |
+| Blind | Not as the later games: no HUD, team indicators or scripted timer, the motion sensor stops, and the first-person weapon is neither updated nor drawn. The HUD's sounds still play, and help, objective and pickup messages still show. | `hud_draw_screen` (`hud.c`), `hud_render_timer` (`hud_messaging.c`), `first_person_weapons.c` |
+| Ghost | No unit flinches from a hit that does not kill it: a soft ping instead of a hard one. Players and allies too. | `unit_ping_animation` (`units.c`) |
 | Assassins | Every enemy unit an actor controls is camouflaged, each tick. | `game_tick` (`game.c`) |
+| Catch | Every actor: a dying one drops all its grenades; it throws them twice as fast; there is no encounter grenade timeout; it considers a grenade every time, at an even chance. | `actor_died` (`actors.c`), `actor_combat.c`, `actions.c` |
+| Sputnik | Every damage impulse is three times as strong. | `object_damage_aftermath` (`damage.c`) |
+| Anger | An enemy actor's primary rate of fire doubles. | `actor_combat_update` (`actor_combat.c`) |
+| Thunderstorm | Every actor whose variant has a major upgrade is placed as that upgrade, whatever its squad says. Allies too. | `ai_get_major_upgrade_chance` (`ai.c`) |
+| That's Just Wrong | Outside cinematics, actors hear every unit as loud, so silent units are heard at the full hearing distance. | `prop_status_refresh` (`actor_perception.c`) |
+| Styx | A Hunter (`characters\hunter\hunter`) has three times its body vitality. | `object_initialize_vitality` (`damage.c`) |
+| Feather | The impulse of damage whose owner holds a weapon is three times as strong (nine with Sputnik). | `object_damage_aftermath` (`damage.c`) |
+| Bandanna | Infinite reserve ammunition and grenades, still reloading, and no battery drain: the existing `cheat_infinite_ammo`. Every player's unit also keeps at least one grenade of each type (no plasma grenade with Foreign). | `mcc_scripts.c`, `mcc_skulls_update` |
 
-The effects follow Halopedia's descriptions of the
-[Anniversary](https://www.halopedia.org/Halo:_Combat_Evolved_Anniversary_skulls) and
-[MCC](https://www.halopedia.org/Halo:_The_Master_Chief_Collection_skulls) skulls.
-Where those leave a value open, it was read from MCC's own `halo1.dll`:
+Values the code leaves open:
 
-- Famine's halving and its battery rule.
-- Black Eye's full refill on a melee hit.
-- Assassins, which applies to teams hostile to the player's.
-
-MCC reads every skull through one function of the skull's index. The other
-skulls stay recorded only:
-
-- Catch, Anger, Thunderstorm, That's Just Wrong, Ghost and Sputnik are
-  described without values.
-- Foreign, Grunt Funeral and Grunt Birthday Party need to know which weapons
-  are Covenant or which units are Grunts, which a map does not say.
-- Malfunction, Piñata, I Would Have Been Your Daddy, Streaking, Styx, Feather,
-  Bonded Pair, Masterblaster and the co-op flag are not implemented.
+- Catch's encounter timeout is a value in MCC that nothing writes, so it is
+  zero. Reading it in a running MCC game would confirm that.
+- Grunt Birthday Party is not in MCC's Halo 1 engine. Its confetti is an
+  Anniversary-graphics effect, which this port does not have, so it stays
+  recorded only.
+- Streaking, Bonded Pair, Masterblaster and the co-op flag stay recorded
+  only. They are co-op and scoring rules that were not decoded.
 
 Checked on Windows with FIREFIGHT CE's `ff_snowfield_night`, run headless
 with console cues. Temporary trace logs were used, and have been removed.
@@ -2375,15 +2387,20 @@ with console cues. Temporary trace logs were used, and have been removed.
 - Iron: a marker was set and a checkpoint saved, then the player died.
   Without Iron the game reverted to the checkpoint, with the marker set.
   With Iron the level restarted, with the marker clear.
+- Mythic: a Grunt set to 10 points of body vitality read 0.333 without it and
+  0.167 with it. Its maximum went from 30 to 60.
 - Famine: a killed Grunt's plasma weapon went from 0.29 to 0.645 of its
   battery used.
 - Assassins: four placed Grunts were camouflaged.
-- Mythic: its doubled maximum was applied when an enemy took damage.
+- Nine skulls on at once, with Grunts, Jackals and Marines placed, fighting
+  and dying, ran without fault: Anger, Assassins, Black Eye, Catch, Fog,
+  Famine, Mythic, Thunderstorm and That's Just Wrong.
 - A stock Xbox level still loads.
 
-Not observed:
+Not observed, because the runs had no display and the map names only some
+skulls:
 
-- Fog, Blind, Eye Patch, Recession and Boom. The map names only Fog, and the
-  runs had no display.
-- The Black Eye refill, which needs a player's melee.
+- The HUD and sound skulls.
+- Foreign, Piñata, Grunt Funeral, Sputnik and Feather.
+- The Black Eye refill.
 - Co-op Iron, and the replicated skulls on a client.

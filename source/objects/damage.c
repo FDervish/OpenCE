@@ -449,6 +449,8 @@ void object_initialize_vitality(
 	if (custom_shield_vitality)
 		maximum_shield_vitality = *custom_shield_vitality;
 
+	/* port: an MCC map's Mythic and Styx skulls (port/linux/game/mcc_skulls.c) */
+	mcc_skulls_vitality(object_index, &maximum_body_vitality, &maximum_shield_vitality);
 	object->object.maximum_body_vitality = maximum_body_vitality;
 	object->object.maximum_shield_vitality = maximum_shield_vitality;
 	object->object.body_vitality = maximum_body_vitality > 0.f ? 1.f : 0.f;
@@ -464,11 +466,7 @@ real object_get_maximum_body_vitality(
 	real result = object->object.maximum_body_vitality;
 
 	if (!ignore_difficulty)
-	{
 		result *= game_difficulty_get_team_value(1, object->object.owner_team_index);
-		/* port: an MCC map's Mythic skull (port/linux/game/mcc_skulls.c) */
-		result *= mcc_skulls_body_vitality_scale(object_index);
-	}
 
 	return result;
 }
@@ -644,6 +642,9 @@ void object_destroy(
 	object = object_get(object_index);
 	definition = object_definition_get(object->definition_index);
 
+	/* port: a Grunt's plasma, with an MCC map's Grunt Funeral skull
+	(port/linux/game/mcc_skulls.c) */
+	mcc_skulls_funeral_explosion(object_index);
 	object_deplete_body(object_index);
 
 	collision_model_index = definition->object.collision_model.index;
@@ -1072,6 +1073,8 @@ static void object_damage_aftermath(
 		/* port: MCC extension data cannot be represented by a scalar impulse. */
 		mcc_accelerate_unit = mcc_damage_acceleration(&damage_effect->damage,
 			object_definition->object.acceleration_scale, &direction, &acceleration);
+		/* port: an MCC map's Sputnik and Feather skulls (port/linux/game/mcc_skulls.c) */
+		scale_vector3d(&acceleration, mcc_skulls_impulse_scale(damage->owner_object_index), &acceleration);
 
 		switch (object->object.type)
 		{
@@ -1494,6 +1497,13 @@ void object_cause_damage(
 	damage_definition = &damage_effect->damage;
 	damage_was_modified = FALSE;
 	parent_takes_body_damage = TRUE;
+	/* port: an MCC map's Pinata skull, before the blow lands
+	(port/linux/game/mcc_skulls.c) */
+	mcc_skulls_pinata(
+		damage->owner_player_index,
+		damage->owner_team_index,
+		object_index,
+		damage_definition->category == _damage_category_melee);
 
 	match_assert(
 		"c:\\halo\\SOURCE\\objects\\damage.c",

@@ -667,17 +667,17 @@ short first_person_weapon_get_marker_by_name(
 void first_person_weapon_render_update(
 	void)
 {
-	if (render.local_player_index!=NONE)
+	/* port: not updated with an MCC map's Blind skull on, as MCC's Halo 1
+	(port/linux/game/mcc_skulls.c) */
+	if (render.local_player_index!=NONE && !mcc_skull_active(_mcc_skull_blind))
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(render.local_player_index);
 
 		if (first_person_weapon->unit_index!=NONE &&
 			first_person_weapon->weapon_index!=NONE)
 		{
-			/* port: nor its effects with an MCC map's Blind skull on */
 			boolean visible= director_get_perspective(render.local_player_index)==_director_perspective_first_person &&
-				player_control_get_zoom_level(render.local_player_index)==NONE &&
-				!mcc_skull_active(_mcc_skull_blind);
+				player_control_get_zoom_level(render.local_player_index)==NONE;
 
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)
