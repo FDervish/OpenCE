@@ -87,6 +87,7 @@ symbols in this file:
 #include "game/players.h"
 #include "interface/hud.h"
 #include "mcc_hud_draw.h" /* port: port/linux/game/mcc_hud_draw.c */
+#include "mcc_skulls.h" /* port: port/linux/game/mcc_skulls.c */
 #include "interface/hud_definitions.h"
 #include "interface/hud_messaging.h"
 #include "interface/hud_unit.h"
@@ -1512,7 +1513,13 @@ void hud_draw_screen(
 
 		if (hud_scripted_globals->show_hud)
 		{
-			if (perspective != _director_perspective_neutral &&
+			/* port: an MCC map's Blind skull draws none of it; its sounds
+			still play (port/linux/game/mcc_skulls.c) */
+			if (mcc_skull_active(_mcc_skull_blind))
+			{
+				hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
+			}
+			else if (perspective != _director_perspective_neutral &&
 				perspective != _director_perspective_scripted &&
 				player->unit_index != NONE)
 			{

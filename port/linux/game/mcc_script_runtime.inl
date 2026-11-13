@@ -5,6 +5,7 @@
 #include "mcc_scripts.h"
 #include "mcc_campaign.h"
 #include "mcc_script_library.h"
+#include "mcc_skulls.h"
 #include "mcc_game_speed.h"
 
 /* Once an if has selected a branch, its frame only forwards that branch's
@@ -49,6 +50,18 @@ static void mcc_hs_speed_reconcile(word designator, boolean write)
     global->value=value.bits;
 }
 long hs_cast(long thread_index, short actual_type, short desired_type, long value);
+
+/* A scenario global's value; zero before the map's scripts are initialized. */
+long mcc_script_scenario_global_value(short scenario_global)
+{
+    long absolute;
+    struct hs_global_datum const *global;
+    if (!hs_global_data || !hs_global_data->valid || scenario_global < 0) return 0;
+    absolute = scenario_global + hs_external_global_count;
+    if (absolute >= hs_global_data->count) return 0;
+    global = (struct hs_global_datum const *)((byte const *)hs_global_data->data + absolute * hs_global_data->size);
+    return global->identifier ? global->value : 0;
+}
 static void mcc_hs_release_thread(long thread_index);
 
 void mcc_script_finished_evaluate(short function, long thread_index, boolean initialize)

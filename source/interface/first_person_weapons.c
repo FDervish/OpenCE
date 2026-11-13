@@ -126,6 +126,7 @@ symbols in this file:
 #include "sound/sound_manager.h"
 #include "units/units.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "mcc_skulls.h" /* port: port/linux/game/mcc_skulls.c */
 #include "shaders/shader_definitions.h" /* port: (the shield's flare on the arms) */
 #include "shaders/shaders.h"
 /* port: port/linux/game/shield_color.c */
@@ -477,8 +478,9 @@ long first_person_weapon_get_local_index(
 void first_person_weapon_draw(
 	void)
 {
-	/* port: not drawn with display.viewmodel_visible off (view_fov.c) */
-	if (!viewmodel_is_visible())
+	/* port: not drawn with display.viewmodel_visible off (view_fov.c),
+	nor with an MCC map's Blind skull on (port/linux/game/mcc_skulls.c) */
+	if (!viewmodel_is_visible() || mcc_skull_active(_mcc_skull_blind))
 		return;
 	if (render.local_player_index!=NONE)
 	{
@@ -672,8 +674,10 @@ void first_person_weapon_render_update(
 		if (first_person_weapon->unit_index!=NONE &&
 			first_person_weapon->weapon_index!=NONE)
 		{
+			/* port: nor its effects with an MCC map's Blind skull on */
 			boolean visible= director_get_perspective(render.local_player_index)==_director_perspective_first_person &&
-				player_control_get_zoom_level(render.local_player_index)==NONE;
+				player_control_get_zoom_level(render.local_player_index)==NONE &&
+				!mcc_skull_active(_mcc_skull_blind);
 
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)

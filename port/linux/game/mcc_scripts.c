@@ -18,6 +18,7 @@
 #include "mcc_campaign.h"
 #include "mcc_player.h"
 #include "mcc_script_library.h"
+#include "mcc_skulls.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -441,6 +442,7 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
     short locals[NUMBEROF(mcc_local_globals)];
     long local_strings=NONE;
     for (i=0;i<(long)NUMBEROF(locals);i++) locals[i]=NONE;
+    mcc_skulls_reset();
     memcpy(&address, runtime->tag_index + (runtime->report.scenario_handle & 0xFFFFu) * 32 + 20, 4);
     scenario = mcc_runtime_pointer(runtime, address, sizeof(*scenario));
     if (!scenario) return FALSE;
@@ -515,7 +517,10 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
                     return FALSE;
                 }
                 if (mcc_local_globals[local].external) node->short_value = locals[local];
-                else node->data = locals[local];
+                else {
+                    node->data = locals[local];
+                    mcc_skulls_bind(mcc_skull_find(name), locals[local]);
+                }
                 if (mcc_local_globals[local].internal)
                     node->string_offset = local_strings + local * MCC_LOCAL_NAME_BYTES;
                 continue;

@@ -625,6 +625,7 @@ are not an MCC implementation dependency. The independent components are:
 | `port/linux/game/mcc_hud_draw.c` | MCC canvas, glyph geometry and text advances; neutral dispatch for Xbox/CE. |
 | `port/linux/game/mcc_terminal.c` | MCC terminal-only font scaling; preserves the map's HUD fonts and all legacy rendering. |
 | `port/linux/game/mcc_scripts.c` | Name-based MCC function/global linking, map-local MCC globals and supported MCC native functions. |
+| `port/linux/game/mcc_skulls.c` | Skull status from an MCC map's scripts, the skulls clients receive, and the skulls' effects at their engine hooks. |
 | `port/linux/game/mcc_script_library.c` | The editing kit's other MCC-only functions, MCC's `map_name` and `cheat_active_camouflage`, and inert debug commands. |
 | `port/linux/game/mcc_campaign.c` | Local-player/authority queries, gravity, campaign markers and scoped global permissions. |
 | `port/linux/game/mcc_syntax.c` | MCC's 32,767-slot syntax validation and traversal workspace. |
@@ -972,8 +973,9 @@ HUD drawing services; the host replicates the complete marker state and
 gravity periodically, including after changes and late joins.
 
 The `debug_ice_cream_flavor_status_*` skull globals are map-local
-booleans that scripts may read and set; no skull's gameplay is applied
-except Bandanna's (see [MCC editing kit script names](#mcc-editing-kit-script-names)).
+booleans that scripts may read and set (see
+[MCC editing kit script names](#mcc-editing-kit-script-names)); eleven of
+them change play (see [MCC skulls](#mcc-skulls)).
 MCC maps may
 set `sound_gain_under_dialog` and `cheat_infinite_ammo`; the adapter captures
 their previous values and restores them on unload. The native global table
@@ -2245,9 +2247,9 @@ The globals are map-local. Each one a map names is given scenario storage, as
 Scripts may read and set it; nothing else reads it.
 
 - **Skulls.** The 29 `debug_ice_cream_flavor_*` globals record which skulls a
-  script turned on. No skull's gameplay is applied, except Bandanna's, which
-  reads and sets the existing `cheat_infinite_ammo`. That control gives
-  infinite reserve ammunition and grenades, and still requires reloading.
+  script turned on. Bandanna reads and sets the existing `cheat_infinite_ammo`.
+  That control gives infinite reserve ammunition and grenades, and still
+  requires reloading. Ten others change play ([MCC skulls](#mcc-skulls)).
   The earlier rule, which accepted only a literal `false` and refused maps
   that enabled a skull, is withdrawn.
 - **Debug and settings switches** (`rasterizer_fps`, `hs_verbose`,
@@ -2298,8 +2300,9 @@ functions:
 The Steam Workshop items examined used only a few of these names. All nine
 maps of the Halo 1 Firefight package (Workshop 2898809930) read and set
 skulls, Bandanna among them. That package also calls
-`cheat_active_camouflage`. Its maps were refused, and now load. The skulls
-their scripts turn on have no effect, except Bandanna. Lumoria (Workshop
+`cheat_active_camouflage`. Its maps were refused, and now load. Of the skulls
+their scripts turn on, Bandanna, Black Eye, Famine, Fog, Iron, Mythic and
+Assassins have their effects ([MCC skulls](#mcc-skulls)). Lumoria (Workshop
 3323672581) calls `map_name episode_2a` on Impossible. The native version of
 that function disabled the script that calls it; the script now runs, and the
 missing map returns to the menu.
@@ -2320,3 +2323,67 @@ window, `debug.network_test` set to `log`, and console cues):
 
 Skull effects, the network-game path of `map_name` and camouflage seen from
 a client were not exercised.
+
+## MCC skulls
+
+Since network version 45, ten skulls change play when an MCC map's scripts
+turn them on, besides Bandanna. `mcc_skulls.c` records which scenario global
+holds each skull while the scripts are prepared, and the host reads the
+globals. Every machine draws or predicts Fog, Blind, Eye Patch, Recession
+and Boom, so the host sends them in bits 12-16 of the campaign state's flags
+([NETCODE.md](../port/linux/NETCODE.md)). The host alone applies the rest. A
+skull is off outside MCC maps, so the Xbox and Custom Edition paths are
+unchanged.
+
+| Skull | Effect | Where |
+| --- | --- | --- |
+| Fog | No motion tracker. | `game_engine_hud_draw_motion_sensor` (`game_engine.c`) |
+| Blind | No HUD, and no first-person weapon or its effects. The HUD's sounds still play. | `hud_draw_screen` (`hud.c`), `first_person_weapons.c` |
+| Eye Patch | No aim assist: no autoaim and no magnetism, as Hardcore. | `aim_assist` (`aim_assist.c`) |
+| Recession | A player's weapon spends twice its rounds per shot, and its battery twice as fast. | `weapon_trigger_fire` and the battery age (`weapons.c`) |
+| Boom | An explosion's cutoff and falloff radii double. | Area damage (`damage.c`) and the host's checks of clients' hit reports (`network_damage.c`) |
+| Iron | A solo player's death restarts the level. One co-op player's death rewinds every player to the last checkpoint. A co-op team wipe always rewinds, whatever the host's wipe choice. | `main_lost_map_private` (`main.c`), the respawn decision (`players.c`) |
+| Famine | The weapons a unit no player controlled drops when it dies keep half their rounds, by integer division. A battery weapon's use moves halfway to empty. | `unit_died` (`units.c`), after the actor chooses the ammunition |
+| Mythic | An enemy biped's maximum body vitality doubles. | `object_get_maximum_body_vitality` (`damage.c`) |
+| Black Eye | A player's shields do not recharge on their own. A player's melee that damages an enemy unit fills them, and leaves an overshield as it is. | Shield recharge and `object_cause_damage` (`damage.c`) |
+| Assassins | Every enemy unit an actor controls is camouflaged, each tick. | `game_tick` (`game.c`) |
+
+The effects follow Halopedia's descriptions of the
+[Anniversary](https://www.halopedia.org/Halo:_Combat_Evolved_Anniversary_skulls) and
+[MCC](https://www.halopedia.org/Halo:_The_Master_Chief_Collection_skulls) skulls.
+Where those leave a value open, it was read from MCC's own `halo1.dll`:
+
+- Famine's halving and its battery rule.
+- Black Eye's full refill on a melee hit.
+- Assassins, which applies to teams hostile to the player's.
+
+MCC reads every skull through one function of the skull's index. The other
+skulls stay recorded only:
+
+- Catch, Anger, Thunderstorm, That's Just Wrong, Ghost and Sputnik are
+  described without values.
+- Foreign, Grunt Funeral and Grunt Birthday Party need to know which weapons
+  are Covenant or which units are Grunts, which a map does not say.
+- Malfunction, Piñata, I Would Have Been Your Daddy, Streaking, Styx, Feather,
+  Bonded Pair, Masterblaster and the co-op flag are not implemented.
+
+Checked on Windows with FIREFIGHT CE's `ff_snowfield_night`, run headless
+with console cues. Temporary trace logs were used, and have been removed.
+
+- Black Eye: a player's shields set to zero stayed at zero for eight
+  seconds. Without it, they refilled.
+- Iron: a marker was set and a checkpoint saved, then the player died.
+  Without Iron the game reverted to the checkpoint, with the marker set.
+  With Iron the level restarted, with the marker clear.
+- Famine: a killed Grunt's plasma weapon went from 0.29 to 0.645 of its
+  battery used.
+- Assassins: four placed Grunts were camouflaged.
+- Mythic: its doubled maximum was applied when an enemy took damage.
+- A stock Xbox level still loads.
+
+Not observed:
+
+- Fog, Blind, Eye Patch, Recession and Boom. The map names only Fog, and the
+  runs had no display.
+- The Black Eye refill, which needs a player's melee.
+- Co-op Iron, and the replicated skulls on a client.

@@ -141,6 +141,7 @@ symbols in this file:
 #include "units/vehicles.h"
 #include "mcc_damage.h" /* port: port/linux/game/mcc_damage.c */
 #include "mcc_ui_teams.h" /* port: port/linux/game/mcc_ui_teams.c */
+#include "mcc_skulls.h" /* port: port/linux/game/mcc_skulls.c */
 #include "server_team_switch.h" /* port: port/linux/game/server_team_switch.c */
 
 /* network_game_globals.c's */
@@ -463,7 +464,11 @@ real object_get_maximum_body_vitality(
 	real result = object->object.maximum_body_vitality;
 
 	if (!ignore_difficulty)
+	{
 		result *= game_difficulty_get_team_value(1, object->object.owner_team_index);
+		/* port: an MCC map's Mythic skull (port/linux/game/mcc_skulls.c) */
+		result *= mcc_skulls_body_vitality_scale(object_index);
+	}
 
 	return result;
 }
@@ -1932,6 +1937,13 @@ void object_cause_damage(
 				body_damage,
 				body_damage_multiplier,
 				body_part);
+			/* port: an MCC map's Black Eye skull fills the shields of a
+			player whose melee struck an enemy (port/linux/game/mcc_skulls.c) */
+			mcc_skulls_melee_struck(
+				damage->owner_player_index,
+				current_object_index,
+				damage_definition->category == _damage_category_melee,
+				shield_damage > 0.f || body_damage > 0.f);
 			/* (the host's, for its clients) */
 			network_damage_aftermath(
 				current_object_index,
@@ -1974,7 +1986,8 @@ void area_of_effect_cause_damage(
 		0,
 		&damage->location,
 		&damage->origin,
-		definition->cutoff_radius,
+		/* port: an MCC map's Boom skull (port/linux/game/mcc_skulls.c) */
+		definition->cutoff_radius*mcc_skulls_explosion_radius_scale(),
 		object_indices,
 		NUMBEROF(object_indices));
 	if (object_count > 0)
@@ -2109,7 +2122,10 @@ void object_damage_update(
 				hud_tick_shield(player_index, 0.00074074074f);
 			}
 		}
-		else if (object->object.shield_vitality < 1.f)
+		/* port: not a player's with an MCC map's Black Eye skull
+		(port/linux/game/mcc_skulls.c) */
+		else if (object->object.shield_vitality < 1.f &&
+			!mcc_skulls_shield_recharge_blocked(object_index))
 		{
 			if (object->object.shield_stun_ticks == 0)
 			{
@@ -2594,12 +2610,14 @@ static void area_of_effect_cause_damage_to_object(
 			&object->object.bounding_sphere_center,
 			&damage->direction);
 		distance = normalize3d(&damage->direction);
-		radius_delta = damage_effect->cutoff_radius - damage_effect->falloff_radius;
+		/* port: an MCC map's Boom skull (port/linux/game/mcc_skulls.c) */
+		radius_delta = (damage_effect->cutoff_radius - damage_effect->falloff_radius)*
+			mcc_skulls_explosion_radius_scale();
 		if (radius_delta > 0.f)
 		{
 			scale = PIN(
 				1.f -
-					(distance - damage_effect->falloff_radius) /
+					(distance - damage_effect->falloff_radius*mcc_skulls_explosion_radius_scale()) /
 					radius_delta,
 				0.f,
 				1.f);

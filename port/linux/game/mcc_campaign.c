@@ -4,6 +4,7 @@
 #include "mcc_cache.h"
 #include "mcc_script_effects.h"
 #include "mcc_game_speed.h"
+#include "mcc_skulls.h"
 #include "ai/actor_definitions.h"
 #include "mcc_ui_network.h"
 #include "main/main.h"
@@ -66,6 +67,8 @@ static boolean mcc_campaign_owned;
 static boolean *mcc_screen_flashes;
 static boolean mcc_original_screen_flashes;
 enum { MCC_CAMPAIGN_FLASHES_DISABLED = 1u << 11 };
+/* The skulls clients draw or predict (mcc_skulls.h), from bit 12. */
+#define MCC_CAMPAIGN_SKULL_SHIFT 12
 extern real sound_gain_under_dialog;
 extern real object_light_ambient_base,object_light_ambient_scale;
 extern boolean loud_dialog_hack;
@@ -168,7 +171,8 @@ void mcc_campaign_snapshot(void *out)
         mcc_campaign.flags=(mcc_campaign.flags&8u) | (cheat.infinite_ammo ? 1u : 0u) | (loud_dialog_hack ? 2u : 0u) |
             (mcc_ignore_player && *mcc_ignore_player ? 4u : 0u) |
             (mcc_script_effects_snapshot()<<4) |
-            (mcc_screen_flashes && !*mcc_screen_flashes ? MCC_CAMPAIGN_FLASHES_DISABLED : 0u);
+            (mcc_screen_flashes && !*mcc_screen_flashes ? MCC_CAMPAIGN_FLASHES_DISABLED : 0u) |
+            (mcc_skulls_replicated()<<MCC_CAMPAIGN_SKULL_SHIFT);
     mcc_campaign.ambient_base=object_light_ambient_base;mcc_campaign.ambient_scale=object_light_ambient_scale;
     memcpy(out,&mcc_campaign,sizeof(mcc_campaign));
 }
@@ -189,7 +193,8 @@ int mcc_campaign_validate(void const *in, unsigned long bytes)
     if (!(state.effects_gain>=0.0f && state.effects_gain<=4.0f) ||
         !(state.music_gain>=0.0f && state.music_gain<=1.0f) ||
         (state.flags & ~(state.version==1u ? 1u : state.version==2u ? 15u :
-            15u|(MCC_EFFECT_MASK<<4)|(state.version>=4u ? MCC_CAMPAIGN_FLASHES_DISABLED : 0u))) ||
+            15u|(MCC_EFFECT_MASK<<4)|(state.version>=4u ? MCC_CAMPAIGN_FLASHES_DISABLED : 0u)|
+            (state.version>=6u ? MCC_SKULLS_REPLICATED_MASK<<MCC_CAMPAIGN_SKULL_SHIFT : 0u))) ||
         !mcc_campaign_real(state.ambient_base) || !mcc_campaign_real(state.ambient_scale) ||
         !mcc_campaign_real(state.model_ambient) ||
         !mcc_campaign_real(state.dialog_gain) ||
@@ -239,6 +244,9 @@ int mcc_campaign_restore(void const *in, unsigned long bytes)
      * runs campaign scripts and decides ammunition consumption. */
     if (game_connection()!=_game_connection_network_client) cheat.infinite_ammo=(mcc_campaign.flags&1u)!=0;
     if (mcc_ignore_player && game_connection()!=_game_connection_network_client) *mcc_ignore_player=(mcc_campaign.flags&4u)!=0;
+    /* The host's skulls are its script globals, which its checkpoints restore. */
+    if (game_connection()==_game_connection_network_client)
+        mcc_skulls_receive((mcc_campaign.flags>>MCC_CAMPAIGN_SKULL_SHIFT)&MCC_SKULLS_REPLICATED_MASK);
     return 1;
 }
 

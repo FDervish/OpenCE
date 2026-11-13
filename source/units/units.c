@@ -699,6 +699,7 @@ symbols in this file:
 #include "coop_scripts.h" /* port: port/linux/game/coop_scripts.c */
 #include "coop_enemies.h" /* port: port/linux/game/coop_enemies.c */
 #include "mcc_grenades.h" /* port: port/linux/game/mcc_grenades.h */
+#include "mcc_skulls.h" /* port: port/linux/game/mcc_skulls.c */
 
 /* port: the control and animation impulses the host's actors give their
 units go to the clients' copies (port/linux/game/network_actors.c) */
@@ -2824,6 +2825,10 @@ void unit_died(
 
 	if (!feigned)
 	{
+		/* port: the weapons of a unit no player controls, for an MCC map's
+		Famine skull (below) */
+		boolean mcc_famine = unit->unit.player_index == NONE;
+
 		object_set_garbage(unit_index, TRUE);
 		if (unit->unit.player_index != NONE)
 		{
@@ -2848,6 +2853,10 @@ void unit_died(
 			actor_swarm_unit_died(unit->unit.swarm_actor_index, unit_index);
 			unit->unit.swarm_actor_index = NONE;
 		}
+		/* port: an MCC map's Famine skull halves the ammunition the unit drops,
+		after its actor chose it (port/linux/game/mcc_skulls.c) */
+		if (mcc_famine)
+			mcc_skulls_famine(unit_index);
 
 		unit->unit.time_of_death = game_time_get();
 	}

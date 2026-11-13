@@ -284,6 +284,7 @@ symbols in this file:
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
 #include "mcc_seats.h" /* port: port/linux/game/mcc_seats.c */
+#include "mcc_skulls.h" /* port: port/linux/game/mcc_skulls.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -4989,6 +4990,11 @@ void players_update_before_game(
 							players_respawn_network_coop(TRUE);
 						}
 					}
+					/* port: with an MCC map's Iron skull, one co-op player's
+					death rewinds everyone to the last checkpoint
+					(port/linux/game/mcc_skulls.c) */
+					else if (!players_globals->all_dead && mcc_skulls_iron())
+						main_lost_map();
 					else if (!players_globals->all_dead)
 						main_respawn(players_globals->respawn_failed);
 				}
