@@ -464,8 +464,10 @@ In version 45, the MCC skulls that every machine draws or predicts
 I Would Have Been Your Daddy, Sputnik, Feather, Foreign and Malfunction) are
 bits 12-21 of an MCC map's campaign state flags, which the host sends every
 third tick. A version-44 client would refuse a state with those bits. Only
-the host runs a map's scripts, so it alone applies the other skulls. The
-message layouts are unchanged.
+the host runs a map's scripts, so it alone applies the other skulls. Bits
+22-31 carry the map's master gain (`sound_set_master_gain`): bit 22 says it
+is there, then its value in 128ths, to 511/128; a state without it has one.
+The message layouts are unchanged.
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the

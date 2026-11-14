@@ -18,11 +18,13 @@
 #include "game/players.h"
 #include "objects/objects.h"
 #include "units/units.h"
+#include "game/cheats.h"
 #include "mcc_cache.h"
 #include "mcc_campaign.h"
 #include "mcc_main.h"
 #include "mcc_script_library.h"
 #include <stdint.h>
+#include <string.h>
 
 boolean hs_macro_function_parse(short function, long expression);
 
@@ -76,8 +78,7 @@ static void mcc_library_ignore_evaluate(short function, long thread, boolean ini
         reported[index] = TRUE;
         error(_error_silent, "mcc: %s has no effect in this port", definition->name);
     }
-    hs_return(thread, definition->return_type == _hs_type_real &&
-        !csstrcasecmp(definition->name, "sound_get_master_gain") ? mcc_library_bits(1.0f) : 0);
+    hs_return(thread, 0);
 }
 
 /* MCC's pin: the first value, no less than the second and no more than the third. */
@@ -150,6 +151,78 @@ static void mcc_music_gain_get_evaluate(short function, long thread, boolean ini
     hs_return(thread, mcc_library_bits(mcc_campaign_music_gain()));
 }
 
+/* The map's multiplier over every sound (mcc_campaign.c), after the
+ * player's own volume, which it does not change. */
+static void mcc_master_gain_get_evaluate(short function, long thread, boolean initialize)
+{
+    (void)function;
+    (void)initialize;
+    hs_return(thread, mcc_library_bits(mcc_campaign_master_gain()));
+}
+
+static void mcc_master_gain_set_evaluate(short function, long thread, boolean initialize)
+{
+    long *args = mcc_library_arguments(function, thread, initialize);
+    if (!args) return;
+    mcc_campaign_set_master_gain(mcc_library_real(args[0]));
+    hs_return(thread, 0);
+}
+
+/* The look rates (degrees a second) a map's scripts set for a local player,
+ * as MCC's set_yaw_rate and set_pitch_rate do, until the next map: they
+ * stand in for the player's sensitivity (mcc_script_look_rates). A rate is
+ * the machine's own; only a host or a local game runs the map's scripts. */
+static struct {
+    boolean set;
+    real rate;
+} mcc_look_rates[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS][2];
+
+void mcc_script_library_reset(void)
+{
+    memset(mcc_look_rates, 0, sizeof(mcc_look_rates));
+}
+
+void mcc_script_look_rates(short controller_index)
+{
+    if (!mcc_cache_tags_loaded() || controller_index < 0 || controller_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+        return;
+    if (mcc_look_rates[controller_index][0].set)
+        player_look_yaw_rate[controller_index] = mcc_look_rates[controller_index][0].rate;
+    if (mcc_look_rates[controller_index][1].set)
+        player_look_pitch_rate[controller_index] = mcc_look_rates[controller_index][1].rate;
+}
+
+/* get_ and set_yaw_rate, get_ and set_pitch_rate: the player's rate, a
+ * local player's index first. */
+static void mcc_look_rate_evaluate(short function, long thread, boolean initialize)
+{
+    long *args = mcc_library_arguments(function, thread, initialize);
+    char const *name = mcc_library_get(function)->name;
+    boolean pitch = name[4] == 'p';
+    short player;
+    if (!args) return;
+    player = (short)args[0];
+    if (player < 0 || player >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS) {
+        hs_return(thread, 0);
+        return;
+    }
+    if (name[0] == 'g') {
+        hs_return(thread, mcc_library_bits(pitch ? player_look_pitch_rate[player] : player_look_yaw_rate[player]));
+        return;
+    }
+    if (mcc_cache_tags_loaded()) {
+        real rate = mcc_library_real(args[1]);
+        /* any finite rate, as MCC takes any */
+        if (rate >= -1000000.0f && rate <= 1000000.0f) {
+            mcc_look_rates[player][pitch].set = TRUE;
+            mcc_look_rates[player][pitch].rate = rate;
+            if (pitch) player_look_pitch_rate[player] = rate;
+            else player_look_yaw_rate[player] = rate;
+        }
+    }
+    hs_return(thread, 0);
+}
+
 /* Every player's unit, where the native cheat camouflages only the first
  * player's: an MCC map's scripts run on the host for all its players, and
  * each unit's camouflage reaches the other machines with its state. */
@@ -169,6 +242,21 @@ static void mcc_active_camouflage_evaluate(short function, long thread, boolean 
                 unit->unit.flags |= FLAG(_unit_super_camouflaged_bit);
             unit->unit.flags |= FLAG(_unit_active_camouflaged_bit);
         }
+    }
+    hs_return(thread, 0);
+}
+
+/* MCC's cheats that drop a shotgun, the map's characters or a warthog
+ * (cheats.c). Objects are the host's to create; clients see them through
+ * the host's object replication, as cheat_all_vehicles' (mcc_campaign.c). */
+static void mcc_cheat_evaluate(short function, long thread, boolean initialize)
+{
+    char const *name = mcc_library_get(function)->name;
+    (void)initialize;
+    if (mcc_cache_tags_loaded() && game_connection() != _game_connection_network_client) {
+        if (!csstrcasecmp(name, "cheat_give_some_gun")) cheat_give_some_gun();
+        else if (!csstrcasecmp(name, "cheat_all_chars")) cheat_all_chars();
+        else cheat_spawn_warthog();
     }
     hs_return(thread, 0);
 }
@@ -204,11 +292,11 @@ static struct mcc_library_definition mcc_library_functions[] = {
     MCC_LIBRARY_IGNORE(_hs_type_void, "debug_script_thread", 2, _hs_type_string, _hs_type_boolean, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "debug_scripting", 1, _hs_type_boolean, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "breakpoint", 1, _hs_type_string, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_void, "kill_active_scripts", 0, 0, 0, 0),
+    MCC_LIBRARY(_hs_type_void, "kill_active_scripts", mcc_kill_active_scripts_evaluate, 0, 0, 0, 0),
     /* cheats that place particular tags */
-    MCC_LIBRARY_IGNORE(_hs_type_void, "cheat_give_some_gun", 0, 0, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_void, "cheat_all_chars", 0, 0, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_void, "cheat_spawn_warthog", 0, 0, 0, 0),
+    MCC_LIBRARY(_hs_type_void, "cheat_give_some_gun", mcc_cheat_evaluate, 0, 0, 0, 0),
+    MCC_LIBRARY(_hs_type_void, "cheat_all_chars", mcc_cheat_evaluate, 0, 0, 0, 0),
+    MCC_LIBRARY(_hs_type_void, "cheat_spawn_warthog", mcc_cheat_evaluate, 0, 0, 0, 0),
     /* the debug camera's files, screenshots, reloading and dumps */
     MCC_LIBRARY_IGNORE(_hs_type_void, "debug_camera_save_name", 1, _hs_type_string, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "debug_camera_load_name", 1, _hs_type_string, 0, 0),
@@ -220,9 +308,10 @@ static struct mcc_library_definition mcc_library_functions[] = {
     MCC_LIBRARY_IGNORE(_hs_type_void, "sound_cache_dump_to_file", 0, 0, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "reload_shader_transparent_chicago", 0, 0, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "rasterizer_reload_effects", 0, 0, 0, 0),
-    /* the player's sound settings: the master volume stays the player's */
-    MCC_LIBRARY_IGNORE(_hs_type_void, "sound_set_master_gain", 1, _hs_type_real, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_real, "sound_get_master_gain", 0, 0, 0, 0),
+    /* the map's multiplier over every sound */
+    MCC_LIBRARY(_hs_type_void, "sound_set_master_gain", mcc_master_gain_set_evaluate, 1, _hs_type_real, 0, 0),
+    MCC_LIBRARY(_hs_type_real, "sound_get_master_gain", mcc_master_gain_get_evaluate, 0, 0, 0, 0),
+    /* the player's sound settings */
     MCC_LIBRARY_IGNORE(_hs_type_void, "sound_enable_eax", 1, _hs_type_boolean, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_boolean, "sound_eax_enabled", 0, 0, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "sound_set_env", 1, _hs_type_short_integer, 0, 0),
@@ -231,11 +320,12 @@ static struct mcc_library_definition mcc_library_functions[] = {
     MCC_LIBRARY_IGNORE(_hs_type_short_integer, "sound_get_supplementary_buffers", 0, 0, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "sound_set_rolloff", 1, _hs_type_real, 0, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "sound_set_factor", 1, _hs_type_real, 0, 0),
-    /* the player's look sensitivity and controls */
-    MCC_LIBRARY_IGNORE(_hs_type_real, "get_yaw_rate", 1, _hs_type_short_integer, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_real, "get_pitch_rate", 1, _hs_type_short_integer, 0, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_void, "set_yaw_rate", 2, _hs_type_short_integer, _hs_type_real, 0),
-    MCC_LIBRARY_IGNORE(_hs_type_void, "set_pitch_rate", 2, _hs_type_short_integer, _hs_type_real, 0),
+    /* the player's look rates */
+    MCC_LIBRARY(_hs_type_real, "get_yaw_rate", mcc_look_rate_evaluate, 1, _hs_type_short_integer, 0, 0),
+    MCC_LIBRARY(_hs_type_real, "get_pitch_rate", mcc_look_rate_evaluate, 1, _hs_type_short_integer, 0, 0),
+    MCC_LIBRARY(_hs_type_void, "set_yaw_rate", mcc_look_rate_evaluate, 2, _hs_type_short_integer, _hs_type_real, 0),
+    MCC_LIBRARY(_hs_type_void, "set_pitch_rate", mcc_look_rate_evaluate, 2, _hs_type_short_integer, _hs_type_real, 0),
+    /* the player's controls */
     MCC_LIBRARY_IGNORE(_hs_type_void, "bind", 3, _hs_type_string, _hs_type_string, _hs_type_string),
     MCC_LIBRARY_IGNORE(_hs_type_void, "unbind", 2, _hs_type_string, _hs_type_string, 0),
     MCC_LIBRARY_IGNORE(_hs_type_void, "print_binds", 0, 0, 0, 0),

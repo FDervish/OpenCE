@@ -8,6 +8,12 @@ struct hs_function_definition;
 #define MCC_HS_LIBRARY_FIRST 0x7100
 struct hs_function_definition *mcc_script_library_function(short index);
 short mcc_script_library_find(char const *name);
+/* At an MCC map's load: the look rates its scripts set are let go. */
+void mcc_script_library_reset(void);
+/* After the player's look rates are taken for a controller
+ * (input_abstraction.c): the rates an MCC map's scripts set instead. */
+void mcc_script_look_rates(short controller_index);
 /* Implemented beside the interpreter's private thread types (mcc_script_runtime.inl). */
 void mcc_script_started_evaluate(short function, long thread, boolean initialize);
+void mcc_kill_active_scripts_evaluate(short function, long thread, boolean initialize);
 #endif

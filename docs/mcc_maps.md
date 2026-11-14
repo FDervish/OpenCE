@@ -1466,9 +1466,9 @@ Xbox or Custom Edition maps. There is no separate MCC transport or matchmaking.
 Boom, Sputnik, and Catch skull globals reported disabled, and enabling one
 was refused. They are now map-local state; see
 [MCC editing kit script names](#mcc-editing-kit-script-names).
-`object_prediction` reports enabled and accepts a literal enable only, matching
-the existing engine prediction policy. Converted constant expressions preserve
-their expected result types, including a void result for a `set` statement.
+`object_prediction` reported enabled and accepted a literal enable only. It
+is now map-local state too; see
+[MCC editing kit script names](#mcc-editing-kit-script-names).
 
 Several data corrections are confined to MCC conversion:
 
@@ -2019,7 +2019,9 @@ map directory, native function table, network packet or checkpoint layout change
 - **Bot Bootcamp A10:** its syntax node 8865 assigns literal true to
   `breadcrumbs_navpoints_enabled_override`. MCC already exposes breadcrumb
   availability as true. This assignment and boolean reads now agree with that
-  policy; computed assignments and disables remain explicit errors.
+  policy; computed assignments and disables remain explicit errors. (The
+  global is now map-local state, which any value may set; see
+  [MCC editing kit script names](#mcc-editing-kit-script-names).)
 - **Bot Bootcamp D40:** `characters\ai_bbcmp\aicyborg` omits the neck-to-head
   child edge. Its associated cyborg model supplies that edge with matching
   ordered names and parents.
@@ -2244,7 +2246,8 @@ The other functions the kit lists have the Xbox table's signatures.
 
 The globals are map-local. Each one a map names is given scenario storage, as
 `developer_mode` was. It starts at zero or false and lasts as checkpoints do.
-Scripts may read and set it; nothing else reads it.
+Scripts may read and set it. The engine reads the skulls and `game_paused`;
+nothing reads the others.
 
 - **Skulls.** The 29 `debug_ice_cream_flavor_*` globals record which skulls a
   script turned on. Bandanna reads and sets the existing `cheat_infinite_ammo`.
@@ -2252,9 +2255,19 @@ Scripts may read and set it; nothing else reads it.
   requires reloading. Most others change play ([MCC skulls](#mcc-skulls)).
   The earlier rule, which accepted only a literal `false` and refused maps
   that enabled a skull, is withdrawn.
+- **`game_paused`** pauses the game when it turns true and resumes it when
+  it turns false, as MCC's game time update does: the clock stops as the
+  pause menu stops it. Closing the pause menu resumes the game, whatever the
+  global holds; MCC does the same. In a local game only: a network host's
+  clock is its clients' too, so there the global is only stored.
+- **`object_prediction` and `breadcrumbs_navpoints_enabled_override`** start
+  false, as in MCC, and take any value. They were accepted only when a script
+  set them to a literal true, which refused maps that turned them off. This
+  port's netcode predicts for itself, and its breadcrumbs are always
+  available (`breadcrumbs_nav_points_active`), so nothing reads them.
 - **Debug and settings switches** (`rasterizer_fps`, `hs_verbose`,
-  `breakpoints_enabled`, `director_camera_switching`, `mouse_acceleration`,
-  `game_paused` and nine more) have no effect.
+  `breakpoints_enabled`, `director_camera_switching`, `mouse_acceleration`
+  and nine more) have no effect.
 - The f0–f5 counters, `game_speed_value`, `debug_score` and
   `developer_mode` keep their earlier behaviour. They share one table in
   `mcc_scripts.c`.
@@ -2263,8 +2276,9 @@ A scenario global's name has at most 31 characters. Longer MCC names use an
 internal name appended to the script strings, which the native recompiler
 resolves (`__mcc_skull_catch`, for example).
 
-Every skull has storage on an MCC map whose scenario has scripts, whether or
-not they name it. The console knows the globals by MCC's names too
+Every skull, and `game_paused`, has storage on an MCC map whose scenario has
+scripts, whether or not they name it. The other globals have storage only on
+a map that names them. The console knows the globals by MCC's names too
 (`hs_find_global_by_name`), and completes them and MCC's functions. So
 `debug_ice_cream_flavor_status_iron 1` (or `set ... true`) turns a skull on to
 test it, and the bare name prints whether it is on. Bandanna's name reaches
@@ -2281,6 +2295,30 @@ functions:
   It is never true for a disabled script. The two getters return the values
   `physics_set_gravity` and `sound_set_music_gain` set. The print functions
   write `hs:` lines to `debug.txt`.
+- **Implemented since:**
+  - `kill_active_scripts` ends every script thread that is running or
+    asleep, and any other console command, as `kill_thread` ends one. As
+    in MCC (`halo1.dll`), it leaves the caller, dormant scripts (a `wake`
+    still starts them) and finished ones.
+  - `sound_set_master_gain` and `sound_get_master_gain`: the map's
+    multiplier over every sound, after the player's own volume, which it
+    does not change. It starts at one on each map and lasts as checkpoints
+    do. The setter keeps MCC's rules: from zero, a gain above zero is at
+    least one. Clients have it from the host (NETCODE.md, version 45), to
+    1/128 and at most 511/128.
+  - `get_yaw_rate`, `get_pitch_rate`, `set_yaw_rate` and `set_pitch_rate`:
+    a local player's look rates, in degrees a second (the native
+    `player0_look_yaw_rate` and its kind). The engine takes the rates from
+    the player's settings each update, so a rate a script sets stands in
+    for them until the next map. An index that is not a local player's
+    gets zero. On a network game only the host runs the scripts, so only
+    its own players' rates change.
+  - `cheat_give_some_gun`, `cheat_all_chars` and `cheat_spawn_warthog`, as
+    MCC's: the first of the globals' weapons whose tag path has `shotgun`;
+    up to 64 units whose path has `character` (bipeds, though MCC's help
+    says vehicles); the first of the multiplayer vehicles whose path has
+    `warthog`. Each is dropped as the native cheats drop theirs, on the
+    host (`cheats.c`).
 - **MCC's versions of two native functions.** A map's scripts may not call
   either Xbox version.
   - `cheat_active_camouflage` camouflages every player's unit on the host.
@@ -2294,14 +2332,13 @@ functions:
     is not installed shows an error and returns to the menu, or a network
     game to its lobby. Nothing else is loaded in its place. The request
     belongs to the map that made it. It does not record campaign progress.
-- **Inert (69):** the script debugger, cheats that place particular tags,
-  the debug camera's files, `quit`, screenshots, reloads, dumps, the player's
-  sound settings (EAX, hardware buffers, rolloff, the master gain), look
-  rates, key bindings, `sv_map`, profiles, checkpoint files, network events,
-  saved films, determinism debugging, the debug menu and `net_never_timeout`.
-  Their arguments are still evaluated, so sleeps and side effects inside them
-  happen. They return zero or false; `sound_get_master_gain` returns one.
-  The first call of each in a run is noted in `debug.txt`.
+- **Inert (59):** the script debugger, the debug camera's files, `quit`,
+  screenshots, reloads, dumps, the player's sound settings (EAX, hardware
+  buffers, rolloff), key bindings, `sv_map`, profiles, checkpoint files,
+  network events, saved films, determinism debugging, the debug menu and
+  `net_never_timeout`. Their arguments are still evaluated, so sleeps and
+  side effects inside them happen. They return zero or false. The first call
+  of each in a run is noted in `debug.txt`.
 
 The Steam Workshop items examined used only a few of these names. All nine
 maps of the Halo 1 Firefight package (Workshop 2898809930) read and set
@@ -2328,6 +2365,31 @@ window, `debug.network_test` set to `log`, and console cues):
 
 Skull effects, the network-game path of `map_name` and camouflage seen from
 a client were not exercised.
+
+The functions and globals implemented since were checked the same way, on
+Ruby's Rebalanced Halo `a10` (2915693904), `mercury2` and `ff_snowfield_night`:
+
+- `sound_get_master_gain` read 1, then 0 after setting 0, then 1 after
+  setting 0.25 (from zero), then 0.25 after setting 0.25 again.
+- `player0_look_yaw_rate` set to 12 read 120 again a second later (the
+  player's setting); `set_yaw_rate 0 45` and `set_pitch_rate 0 30` still read
+  45 and 30 a second and a half later. `get_yaw_rate 7` read zero.
+- `script_finished "mission_a10"` read false, then true after
+  `kill_active_scripts`; the console went on running commands.
+- `set game_paused true` stopped game time: a cue two game seconds later
+  never ran in the twenty seconds the game had left. With
+  `set game_paused false` instead, it ran.
+- `mercury2`'s scripts turn `object_prediction` on; the console then set it
+  false and true again.
+- With a temporary trace, since removed, the cheats dropped a shotgun and a
+  warthog on Mercury Rising's `mp_plains`, and the characters of `a10` and
+  `ff_snowfield_night`.
+- `ff_snowfield_night` still loads, and its skulls, `game_paused` and the
+  master gain answer from the console.
+
+Not exercised: a map that calls these functions itself, the master gain
+heard on a client, and `breadcrumbs_navpoints_enabled_override` on a map that
+names it (Bot Bootcamp, which is not installed here).
 
 ## MCC skulls
 

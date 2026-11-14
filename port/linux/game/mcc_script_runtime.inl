@@ -188,6 +188,24 @@ void mcc_executing_thread_evaluate(short function, long thread_index, boolean in
     if (mcc_cache_tags_loaded()) hs_return(thread_index, thread_index);
 }
 
+/* Ends a thread: its frames are let go and a script's thread does not run
+ * again. A console command's thread is deleted, except the current one,
+ * whose deletion hs_thread_main owns. */
+static void mcc_hs_end_thread(long target, boolean current)
+{
+    struct hs_thread_datum *thread = hs_thread_get(target);
+    mcc_hs_release_thread(target);
+    thread->stack = (struct hs_stack_frame *)thread->stack_data;
+    thread->stack->previous = NULL;
+    thread->stack->expression_index = NONE;
+    thread->stack->size = 0;
+    thread->flags = 0;
+    thread->previous_sleep_until = 0;
+    thread->sleep_until = thread->type == _hs_thread_type_script ? NONE : 0;
+    thread->result = 0;
+    if (!current && thread->type == _hs_thread_type_console_command) hs_thread_delete(target);
+}
+
 void mcc_kill_thread_evaluate(short function, long thread_index, boolean initialize)
 {
     long *arguments, target;
@@ -201,19 +219,29 @@ void mcc_kill_thread_evaluate(short function, long thread_index, boolean initial
     thread = target != NONE && (unsigned long)target >> 16 && hs_thread_data && hs_thread_data->valid ?
         datum_try_and_get(hs_thread_data, target) : NULL;
     if (thread) {
-        mcc_hs_release_thread(target);
-        thread->stack = (struct hs_stack_frame *)thread->stack_data;
-        thread->stack->previous = NULL;
-        thread->stack->expression_index = NONE;
-        thread->stack->size = 0;
-        thread->flags = 0;
-        thread->previous_sleep_until = 0;
-        thread->sleep_until = thread->type == _hs_thread_type_script ? NONE : 0;
-        thread->result = 0;
-        /* Self-termination must not return through the frames just released.
-         * hs_thread_main owns deletion of its current console thread. */
-        if (thread == hs_thread_get(thread_index)) return;
-        if (thread->type == _hs_thread_type_console_command) hs_thread_delete(target);
+        boolean current = thread == hs_thread_get(thread_index);
+        mcc_hs_end_thread(target, current);
+        /* Self-termination must not return through the frames just released. */
+        if (current) return;
+    }
+    hs_return(thread_index, 0);
+}
+
+/* MCC's kill_active_scripts ends every thread that is running or asleep but
+ * the caller's. As MCC's, it leaves a dormant script's thread, which a wake
+ * can still start, and a finished one. */
+void mcc_kill_active_scripts_evaluate(short function, long thread_index, boolean initialize)
+{
+    struct hs_thread_datum *caller = hs_thread_get(thread_index);
+    long target;
+    (void)function; (void)initialize;
+    if (mcc_cache_tags_loaded() && hs_thread_data && hs_thread_data->valid) {
+        for (target = data_next_index(hs_thread_data, NONE); target != NONE;
+            target = data_next_index(hs_thread_data, target)) {
+            struct hs_thread_datum *thread = hs_thread_get(target);
+            if (thread != caller && thread->sleep_until != NONE && thread->sleep_until != NONE - 1)
+                mcc_hs_end_thread(target, FALSE);
+        }
     }
     hs_return(thread_index, 0);
 }

@@ -19,6 +19,7 @@
 #include "mcc_player.h"
 #include "mcc_script_library.h"
 #include "mcc_skulls.h"
+#include "mcc_game_speed.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -312,13 +313,14 @@ static short mcc_local_global(struct mcc_runtime *runtime, struct scenario *scen
 /* MCC external globals the Xbox engine lacks, and the f0-f5 debug floats
  * whose native renderer controls a map must not reach. Each is given the
  * scenario storage above, starting at zero (game_speed_value at one): script
- * reads, writes and checkpoints work, and nothing else reads the value. The
- * list is MCC's editing kit's (hs_doc.txt). A scenario global's name has at
- * most 31 characters, so longer names, and f0-f5 (which the native table
- * also has), use an internal name appended to the script strings: the
- * native recompiler resolves the token by name again. Skull status is the
- * map's own state; no skull is applied, except Bandanna, which is the
- * existing infinite ammunition and grenades control (an external global). */
+ * reads, writes and checkpoints work. The engine reads the skulls'
+ * (mcc_skulls.c) and game_paused (mcc_game_speed.c); nothing reads the
+ * others. The list is MCC's editing kit's (hs_doc.txt). A scenario global's
+ * name has at most 31 characters, so longer names, and f0-f5 (which the
+ * native table also has), use an internal name appended to the script
+ * strings: the native recompiler resolves the token by name again. Bandanna
+ * is the existing infinite ammunition and grenades control (an external
+ * global). */
 #define MCC_LOCAL_NAME_BYTES 32
 static struct {
     char const *name, *internal;
@@ -380,6 +382,11 @@ static struct {
     {"slow_server_startup_safety_zone_in_seconds","__mcc_slow_server_startup",_hs_type_long_integer,FALSE},
     {"error_suppress_all",NULL,_hs_type_boolean,FALSE},
     {"mouse_acceleration",NULL,_hs_type_real,FALSE},
+    /* MCC's client prediction and its breadcrumbs override; both start
+     * false in MCC. The port's netcode predicts for itself, and its
+     * breadcrumbs are always available (breadcrumbs_nav_points_active). */
+    {"object_prediction",NULL,_hs_type_boolean,FALSE},
+    {"breadcrumbs_navpoints_enabled_override","__mcc_breadcrumbs_override",_hs_type_boolean,FALSE},
     {"game_paused",NULL,_hs_type_boolean,FALSE}
 };
 
@@ -415,22 +422,6 @@ static long mcc_local_global_strings(struct mcc_runtime *runtime, struct scenari
     return base;
 }
 
-static boolean mcc_boolean_result(struct hs_syntax_node *node,boolean value)
-{
-    union { real number;long bits; } result;
-    switch (node->type) {
-    case _hs_type_void: result.bits=0;break;
-    case _hs_type_boolean: case _hs_type_short_integer: case _hs_type_long_integer:
-        result.bits=value!=FALSE;break;
-    case _hs_type_real: result.number=value ? 1.0f : 0.0f;break;
-    default: return FALSE;
-    }
-    /* The native cache recompiler requires primitive constants to have
-     * matching stored/desired types, including discarded (void) results. */
-    node->flags=9;node->constant_type=node->type;node->data=result.bits;node->source_offset=NONE;
-    return TRUE;
-}
-
 int mcc_scripts_prepare(struct mcc_runtime *runtime)
 {
     uint32_t address;
@@ -443,6 +434,8 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
     long local_strings=NONE;
     for (i=0;i<(long)NUMBEROF(locals);i++) locals[i]=NONE;
     mcc_skulls_reset();
+    mcc_game_paused_bind(NONE);
+    mcc_script_library_reset();
     memcpy(&address, runtime->tag_index + (runtime->report.scenario_handle & 0xFFFFu) * 32 + 20, 4);
     scenario = mcc_runtime_pointer(runtime, address, sizeof(*scenario));
     if (!scenario) return FALSE;
@@ -470,33 +463,11 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
                 return FALSE;
             name = mcc_script_string(strings, scenario->hs_string_constants.size, nodes[child].string_offset);
             if (!name) return FALSE;
-            if (!csstrcasecmp(name,"set")) {
-                struct hs_syntax_node *target = datum_try_and_get(syntax,nodes[child].next_node_index);
-                char const *target_name=target ? mcc_script_string(strings,scenario->hs_string_constants.size,target->string_offset) : NULL;
-                if (target && (target->flags&5)==5 && target_name && (!csstrcasecmp(target_name,"object_prediction") ||
-                    !csstrcasecmp(target_name,"breadcrumbs_navpoints_enabled_override"))) {
-                    struct hs_syntax_node *value=datum_try_and_get(syntax,target->next_node_index);
-                    /* Prediction and MCC breadcrumb availability are always
-                     * enabled. A literal enable agrees with those policies;
-                     * never discard a disable request or computed value. */
-                    if (value && (value->flags&7)==1 && value->type==_hs_type_boolean &&
-                        value->constant_type==_hs_type_boolean && value->boolean_value && value->next_node_index==NONE) {
-                        if (!mcc_boolean_result(node,TRUE)) return FALSE;
-                        continue;
-                    }
-                    error(_error_silent,"mcc: %s supports only a literal enable (syntax node %ld)",target_name,i);
-                    return FALSE;
-                }
-            }
             index = mcc_script_resolve(name, TRUE);
             if (index != NONE) node->function_index = nodes[child].function_index = index;
         } else if ((node->flags & 5) == 5 && ((uint16_t)node->data & 0x8000)) {
             name = mcc_script_string(strings, scenario->hs_string_constants.size, node->string_offset);
             if (!name) return FALSE;
-            if (!csstrcasecmp(name,"object_prediction") || !csstrcasecmp(name,"breadcrumbs_navpoints_enabled_override")) {
-                if (node->type!=_hs_type_boolean) return FALSE;
-                node->flags&=~4;node->constant_type=_hs_type_boolean;node->data=TRUE;continue;
-            }
             index = mcc_local_global_find(name);
             if (index != NONE) {
                 short local = index;
@@ -536,15 +507,18 @@ int mcc_scripts_prepare(struct mcc_runtime *runtime)
             ++missing;
         }
     }
-    /* Every skull has storage, whether or not the map's scripts name it, so
-     * the console can turn on any of them (mcc_script_find_global). */
+    /* Every skull, and game_paused, has storage, whether or not the map's
+     * scripts name it, so the console can set any of them
+     * (mcc_script_find_global). */
     for (i = 0; i < (long)NUMBEROF(mcc_local_globals); i++) {
         short skull = mcc_skull_find(mcc_local_globals[i].name);
-        if (skull == NONE || mcc_local_globals[i].external || locals[i] != NONE) continue;
-        locals[i] = mcc_local_global(runtime, scenario, syntax,
+        boolean paused = !csstrcasecmp(mcc_local_globals[i].name, "game_paused");
+        if ((skull == NONE && !paused) || mcc_local_globals[i].external) continue;
+        if (locals[i] == NONE) locals[i] = mcc_local_global(runtime, scenario, syntax,
             mcc_local_globals[i].internal ? mcc_local_globals[i].internal : mcc_local_globals[i].name,
             mcc_local_globals[i].type);
         if (locals[i] == NONE) error(_error_silent, "mcc: no scenario storage for %s", mcc_local_globals[i].name);
+        else if (paused) mcc_game_paused_bind(locals[i]);
         else mcc_skulls_bind(skull, locals[i]);
     }
     /* Retain the MCC arena, including free slots for console expressions.
